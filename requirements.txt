@@ -1,0 +1,9 @@
+# Azure DevOps Wiki → Confluence Migration Tool
+# Install with: pip install -r requirements.txt
+
+# HTTP requests to Confluence API
+requests>=2.31.0
+
+# HTML post-processing (converts Pandoc HTML5 output to Confluence Storage Format)
+beautifulsoup4>=4.12.0
+lxml>=4.9.0

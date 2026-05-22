@@ -1,0 +1,41 @@
+{
+  "_comment": "Copy this file to config.json and fill in your actual values.",
+  "_multi_wiki_tip": "For multiple wikis: either create one config per wiki, OR use one shared config and override wiki_clone_dir + mapping_file via --wiki-dir and --mapping-file CLI flags.",
+
+  "wiki_clone_dir": "./my-wiki",
+  "_wiki_clone_dir_help": "Path to the folder created by: git clone <your-ado-wiki-url> my-wiki",
+
+  "confluence_base_url": "https://your-org.atlassian.net",
+  "_confluence_base_url_help": "Your Atlassian domain — do NOT include /wiki at the end.",
+
+  "confluence_space_key": "MYSPACE",
+  "_confluence_space_key_help": "Short space key — found in the Confluence URL after /spaces/",
+
+  "confluence_email": "you@yourcompany.com",
+  "_confluence_email_help": "Your Atlassian login email address.",
+
+  "confluence_api_token": "YOUR_CONFLUENCE_API_TOKEN_HERE",
+  "_confluence_api_token_help": "Generate at: https://id.atlassian.com/manage-profile/security/api-tokens",
+
+  "confluence_parent_page_id": "123456789",
+  "_confluence_parent_page_id_help": "Page ID of the Confluence page that will be the root parent. Find it in the page URL: /pages/XXXXXXXXX/. Can be overridden per-run with --parent-page-id.",
+
+  "mapping_file": "./mapping.json",
+  "_mapping_file_help": "Where to save migration progress. IMPORTANT: use a different mapping file per wiki (e.g. mapping-wiki1.json, mapping-wiki2.json). Can be overridden with --mapping-file.",
+
+  "_section_filter_comment": "=== SECTION FILTERING (optional) ===",
+  "include_paths": [],
+  "_include_paths_help": "Migrate only these ADO paths. e.g. [\"/Products\", \"/Architecture\"]. Leave [] for all pages.",
+  "exclude_paths": [],
+  "_exclude_paths_help": "Skip these ADO paths. e.g. [\"/Products/Archive\"]. Leave [] to skip nothing.",
+
+  "_logging_section": "=== LOGGING SETTINGS ===",
+  "log_file": "migration.log",
+  "_log_file_help": "Path to the log file. Every run appends to this file with timestamps. Set to null to disable file logging. Default: migration.log",
+
+  "_ssl_section": "=== SSL SETTINGS (only needed on corporate/proxy networks) ===",
+  "ssl_verify": true,
+  "_ssl_verify_help": "Set to false if you get SSL certificate errors. Run fix_ssl.py for a proper fix.",
+  "_ssl_cert_path_help": "Optional: path to your company CA cert. Run fix_ssl.py to generate it.",
+  "_ssl_cert_path_example": "\"ssl_cert_path\": \"./company-ca.crt\""
+}
