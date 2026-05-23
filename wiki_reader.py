@@ -156,8 +156,21 @@ def build_manifest(
                 "order_position":  order_pos,
             })
 
+    # ── Inject synthetic parent pages for folder-only nodes ─────────────────
+    # ADO Wiki allows a folder to contain child pages WITHOUT a corresponding
+    # .md file for the folder itself (the folder is a pure container).
+    # Without a parent page in the manifest, store.get_page_id(parent) returns
+    # None and children land under the Confluence root parent instead of their
+    # correct location. Synthetic pages fix this by creating a placeholder stub.
+    synthetics = _find_synthetic_parents(all_pages)
+    if synthetics:
+        print(f"\n  ⚠ {len(synthetics)} folder(s) with no .md file — creating synthetic stub page(s):")
+        for s in synthetics:
+            print(f"    + {s['ado_path']}  (folder-only, no .md file in clone)")
+        all_pages.extend(synthetics)
+
     # ── Sort: respect .order files, parents before children ───────────────────
-    # Primary sort: depth (parents first)
+    # Primary sort: depth (parents first — ensures synthetic parents before children)
     # Secondary sort: order_position within the same parent (respects .order)
     # Tertiary sort: ado_path alphabetically (stable fallback)
     all_pages.sort(key=lambda p: (
@@ -209,6 +222,67 @@ def find_paths(wiki_root: Path, search_term: str) -> list[tuple[str, str]]:
                 matches.append((ado_path, title))
 
     return matches
+
+
+def _find_synthetic_parents(pages: list[dict]) -> list[dict]:
+    """
+    Find directories that exist in the wiki as folders but have no corresponding
+    .md file, meaning they would not appear as pages in the manifest.
+
+    When a child page has parent_ado_path X but X is not in the manifest,
+    Confluence has nowhere to put the child and falls back to the root parent page,
+    destroying the hierarchy.
+
+    This function creates synthetic placeholder entries for those missing parents
+    so the children get a real Confluence parent in the correct location.
+
+    The synthetic pages are created as stub pages with a note in the body
+    indicating they are auto-generated section containers.
+
+    Returns a list of synthetic page dicts to be merged into the manifest.
+    """
+    existing_paths = {p["ado_path"] for p in pages}
+    needed         = set()
+
+    for page in pages:
+        parent = page["parent_ado_path"]
+        if parent and parent not in existing_paths:
+            needed.add(parent)
+
+    # Also check if synthetic parents themselves need a parent (recursive)
+    # Keep iterating until no new parents are needed
+    while True:
+        new_needed = set()
+        all_paths  = existing_paths | needed
+        for parent_path in needed:
+            parts  = parent_path.strip("/").split("/")
+            grandp = "/" + "/".join(parts[:-1]) if len(parts) > 1 else None
+            if grandp and grandp not in all_paths:
+                new_needed.add(grandp)
+        if not new_needed:
+            break
+        needed.update(new_needed)
+
+    synthetics = []
+    for parent_path in sorted(needed):
+        parts            = parent_path.strip("/").split("/")
+        folder_name      = parts[-1]
+        title            = _title_from_filename(folder_name)
+        parent_of_parent = ("/" + "/".join(parts[:-1])) if len(parts) > 1 else None
+        depth            = len(parts) - 1
+
+        synthetics.append({
+            "ado_path":        parent_path,
+            "title":           title,
+            "parent_ado_path": parent_of_parent,
+            "md_path":         None,      # no .md file on disk
+            "depth":           depth,
+            "attachments":     [],
+            "order_position":  5000,      # sorts after .order entries, before unlisted
+            "synthetic":       True,      # flag for Pass 1 to generate placeholder body
+        })
+
+    return synthetics
 
 
 # ── .order file parsing ───────────────────────────────────────────────────────

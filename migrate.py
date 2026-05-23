@@ -182,6 +182,38 @@ def _run_find_path(wiki_dir, search_term: str):
 def run_pass1(manifest, confluence, store, attachments_dir, dry_run, base_url="", space_key=""):
     print_header(f"PASS 1 — Creating {len(manifest)} page stubs in Confluence")
 
+    # ── Pre-flight: detect pages whose parent is missing ──────────────────────
+    # A page's parent can be missing if:
+    #   - The parent .md was not cloned (Windows long-path issue)
+    #   - The parent was outside the --include scope
+    #   - The parent save failed in a previous run (not in mapping.json)
+    manifest_paths = {p["ado_path"] for p in manifest}
+    orphans = []
+    for page in manifest:
+        parent = page["parent_ado_path"]
+        if parent and parent not in manifest_paths:
+            already_mapped = store.get_page_id(parent) is not None
+            if not already_mapped:
+                orphans.append((page["ado_path"], parent))
+
+    if orphans:
+        print(f"\n  ⚠ PRE-FLIGHT WARNING: {len(orphans)} page(s) have a missing parent.")
+        print(f"  These pages will be placed under the ROOT page instead of their correct parent.")
+        print(f"  Most likely cause: parent .md file missing from git clone (Windows long-path).")
+        print()
+        for child, missing_parent in orphans[:10]:   # show first 10
+            print(f"    Child:          {child}")
+            print(f"    Missing parent: {missing_parent}")
+            print()
+        if len(orphans) > 10:
+            print(f"    ... and {len(orphans) - 10} more.")
+        print(f"  Recommended fix:")
+        print(f"    1. Run:  git config --global core.longpaths true")
+        print(f"    2. Enable Windows long paths (see installation guide Section 2B)")
+        print(f"    3. Delete the partial wiki clone and re-clone")
+        print(f"    4. Delete mapping.json and re-run the migration")
+        print()
+
     for i, page in enumerate(manifest):
         label = f"{page['title']}  ({page['ado_path']})"
 
@@ -195,11 +227,37 @@ def run_pass1(manifest, confluence, store, attachments_dir, dry_run, base_url=""
             parent_cf_id = None
             if page["parent_ado_path"]:
                 parent_cf_id = store.get_page_id(page["parent_ado_path"])
+                if parent_cf_id is None:
+                    # Parent not in mapping.json — it was either not migrated yet,
+                    # its save failed in a previous run, or its .md file was missing
+                    # from the git clone (Windows long-path issue).
+                    # Confluence will place this page under the root parent page
+                    # instead of under its correct parent — hierarchy will be wrong.
+                    print(f"         ⚠ PARENT MISSING from mapping.json: {page['parent_ado_path']}")
+                    print(f"           This page will be created under the ROOT parent page.")
+                    print(f"           Causes: (1) parent not yet migrated in this run,")
+                    print(f"                   (2) parent .md file missing from git clone (Windows long-path),")
+                    print(f"                   (3) parent save failed in a previous run.")
+                    print(f"           Fix: check mapping.json for '{page['parent_ado_path']}'")
+                    print(f"                If missing: delete mapping.json and re-run from scratch,")
+                    print(f"                or move the misplaced page manually in Confluence.")
+
+            # Synthetic pages (folder-only nodes with no .md file) get a
+            # descriptive body explaining they are section containers.
+            if page.get("synthetic"):
+                stub_body = (
+                    f"<p><em>This page was automatically created as a section container. "
+                    f"The original Azure DevOps Wiki folder "
+                    f"<code>{page['ado_path']}</code> existed as a directory "
+                    f"without a corresponding page file.</em></p>"
+                )
+            else:
+                stub_body = "<p><em>Migration in progress…</em></p>"
 
             cf_id, actual_title = confluence.create_page(
                 title=page["title"],
                 parent_id=parent_cf_id,
-                body="<p><em>Migration in progress…</em></p>",
+                body=stub_body,
             )
             # Save the ACTUAL title used (may have a suffix if there was a conflict)
             # Pass base_url + space_key so the stored URL includes the space key
@@ -234,6 +292,12 @@ def run_pass2(manifest, confluence, store, dry_run):
         print_step(i + 1, len(manifest), f"Converting  →  {page['title']}")
 
         try:
+            # Skip synthetic pages (folder-only nodes) — they have no .md file.
+            # Their stub body was already set correctly in Pass 1.
+            if page.get("synthetic"):
+                print(f"         [synthetic stub — no content to upload]")
+                continue
+
             raw_md      = page["md_path"].read_text(encoding="utf-8")
             storage_xml = convert_markdown(raw_md)
             storage_xml = rewrite_links(storage_xml, store)
